@@ -42,42 +42,28 @@ const fitImageBtn = document.getElementById("fitImage");
 const undoBtn = document.getElementById("undoBtn");
 const redoBtn = document.getElementById("redoBtn");
 
-// ===============================
-// Canvas
-// ===============================
-
 canvas.width = 900;
 canvas.height = 600;
-
-// ===============================
-// Image
-// ===============================
+canvas.style.touchAction = "none";
 
 let image = new Image();
 let imageLoaded = false;
 
-// ===============================
-// Crop Variables
-// ===============================
-
 let cropMode = false;
-let isCropping = false;
-let cropActive = false;
+let cropBox = null;
 let cropStartX = 0;
 let cropStartY = 0;
 let cropEndX = 0;
 let cropEndY = 0;
-
-// ===============================
-// Undo / Redo
-// ===============================
+let isCropping = false;
+let isMovingCrop = false;
+let cropDragMode = null;
+let cropOffsetX = 0;
+let cropOffsetY = 0;
+const cropHandleSize = 10;
 
 let history = [];
 let redoHistory = [];
-
-// ===============================
-// Image Settings
-// ===============================
 
 const imageSettings = {
     brightness: 100,
@@ -95,28 +81,37 @@ const imageSettings = {
     offsetY: 0
 };
 
-// ===============================
-// Helpers
-// ===============================
+let isDragging = false;
+let startX = 0;
+let startY = 0;
+let activePointerId = null;
 
 function resetCropState() {
     cropMode = false;
-    isCropping = false;
-    cropActive = false;
+    cropBox = null;
     cropStartX = 0;
     cropStartY = 0;
     cropEndX = 0;
     cropEndY = 0;
+    isCropping = false;
+    isMovingCrop = false;
+    cropDragMode = null;
+    cropOffsetX = 0;
+    cropOffsetY = 0;
     applyCropBtn.style.display = "none";
     canvas.style.cursor = "default";
 }
 
-function getCropRect() {
-    const x = Math.min(cropStartX, cropEndX);
-    const y = Math.min(cropStartY, cropEndY);
-    const w = Math.abs(cropEndX - cropStartX);
-    const h = Math.abs(cropEndY - cropStartY);
+function normalizeRect(x1, y1, x2, y2) {
+    const x = Math.min(x1, x2);
+    const y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1);
+    const h = Math.abs(y2 - y1);
     return { x, y, w, h };
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(value, max));
 }
 
 function pointInRect(x, y, rect) {
@@ -126,6 +121,52 @@ function pointInRect(x, y, rect) {
         y >= rect.y &&
         y <= rect.y + rect.h
     );
+}
+
+function getCanvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+    };
+}
+
+function getCropHandle(x, y) {
+    if (!cropBox) return null;
+
+    const hs = cropHandleSize;
+    const left = cropBox.x;
+    const top = cropBox.y;
+    const right = cropBox.x + cropBox.w;
+    const bottom = cropBox.y + cropBox.h;
+    const midX = cropBox.x + cropBox.w / 2;
+    const midY = cropBox.y + cropBox.h / 2;
+
+    const handles = [
+        { name: "nw", x: left, y: top },
+        { name: "n", x: midX, y: top },
+        { name: "ne", x: right, y: top },
+        { name: "e", x: right, y: midY },
+        { name: "se", x: right, y: bottom },
+        { name: "s", x: midX, y: bottom },
+        { name: "sw", x: left, y: bottom },
+        { name: "w", x: left, y: midY }
+    ];
+
+    for (const handle of handles) {
+        if (
+            x >= handle.x - hs &&
+            x <= handle.x + hs &&
+            y >= handle.y - hs &&
+            y <= handle.y + hs
+        ) {
+            return handle.name;
+        }
+    }
+
+    return null;
 }
 
 function resetTransformOnly() {
@@ -184,47 +225,94 @@ function loadImage(file) {
     reader.readAsDataURL(file);
 }
 
-// ===============================
-// Upload Image
-// ===============================
+function drawCropOverlay() {
+    if (!cropMode || !cropBox || cropBox.w <= 0 || cropBox.h <= 0) return;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.clearRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h);
+
+    ctx.strokeStyle = "#00ff88";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 5]);
+    ctx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h);
+
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#00ff88";
+
+    const handles = [
+        [cropBox.x, cropBox.y],
+        [cropBox.x + cropBox.w / 2, cropBox.y],
+        [cropBox.x + cropBox.w, cropBox.y],
+        [cropBox.x + cropBox.w, cropBox.y + cropBox.h / 2],
+        [cropBox.x + cropBox.w, cropBox.y + cropBox.h],
+        [cropBox.x + cropBox.w / 2, cropBox.y + cropBox.h],
+        [cropBox.x, cropBox.y + cropBox.h],
+        [cropBox.x, cropBox.y + cropBox.h / 2]
+    ];
+
+    handles.forEach(([hx, hy]) => {
+        ctx.fillRect(hx - cropHandleSize / 2, hy - cropHandleSize / 2, cropHandleSize, cropHandleSize);
+    });
+
+    ctx.restore();
+}
+
+function renderToSourceCanvas() {
+    const sourceCanvas = document.createElement("canvas");
+    const sourceCtx = sourceCanvas.getContext("2d");
+    sourceCanvas.width = canvas.width;
+    sourceCanvas.height = canvas.height;
+
+    sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+    sourceCtx.save();
+
+    sourceCtx.translate(sourceCanvas.width / 2, sourceCanvas.height / 2);
+    sourceCtx.translate(imageSettings.offsetX, imageSettings.offsetY);
+    sourceCtx.scale(imageSettings.zoom, imageSettings.zoom);
+    sourceCtx.rotate(imageSettings.rotation * Math.PI / 180);
+    sourceCtx.scale(imageSettings.flipX, imageSettings.flipY);
+
+    sourceCtx.filter = `
+        brightness(${imageSettings.brightness}%)
+        contrast(${imageSettings.contrast}%)
+        saturate(${imageSettings.saturation}%)
+        blur(${imageSettings.blur}px)
+        grayscale(${imageSettings.grayscale}%)
+        sepia(${imageSettings.sepia}%)
+        invert(${imageSettings.invert}%)
+    `;
+
+    const scale = Math.min(sourceCanvas.width / image.width, sourceCanvas.height / image.height);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+
+    sourceCtx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    sourceCtx.restore();
+
+    return sourceCanvas;
+}
 
 fileInput.addEventListener("change", (e) => {
     loadImage(e.target.files[0]);
 });
-
-// ===============================
-// Drag and Drop
-// ===============================
 
 ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
     dropArea.addEventListener(eventName, preventDefaults, false);
     document.addEventListener(eventName, preventDefaults, false);
 });
 
-dropArea.addEventListener("dragenter", () => {
-    dropArea.classList.add("drag-over");
-});
-
-dropArea.addEventListener("dragover", () => {
-    dropArea.classList.add("drag-over");
-});
-
-dropArea.addEventListener("dragleave", () => {
-    dropArea.classList.remove("drag-over");
-});
-
-dropArea.addEventListener("drop", () => {
-    dropArea.classList.remove("drag-over");
-});
+dropArea.addEventListener("dragenter", () => dropArea.classList.add("drag-over"));
+dropArea.addEventListener("dragover", () => dropArea.classList.add("drag-over"));
+dropArea.addEventListener("dragleave", () => dropArea.classList.remove("drag-over"));
+dropArea.addEventListener("drop", () => dropArea.classList.remove("drag-over"));
 
 dropArea.addEventListener("drop", (e) => {
     const file = e.dataTransfer.files[0];
     loadImage(file);
 });
-
-// ===============================
-// Draw Image
-// ===============================
 
 function drawImage() {
     if (!imageLoaded || !image.src) return;
@@ -255,20 +343,10 @@ function drawImage() {
     ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
     ctx.restore();
 
-    if (cropMode) {
-        const { x, y, w, h } = getCropRect();
-        ctx.save();
-        ctx.strokeStyle = "#00ff88";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 5]);
-        ctx.strokeRect(x, y, w, h);
-        ctx.restore();
+    if (cropMode && cropBox && cropBox.w > 0 && cropBox.h > 0) {
+        drawCropOverlay();
     }
 }
-
-// ===============================
-// Sliders
-// ===============================
 
 brightnessSlider.addEventListener("input", () => {
     saveHistory();
@@ -298,10 +376,6 @@ blurSlider.addEventListener("input", () => {
     drawImage();
 });
 
-// ===============================
-// Filter Buttons
-// ===============================
-
 grayscaleBtn.addEventListener("click", () => {
     saveHistory();
     imageSettings.grayscale = imageSettings.grayscale === 100 ? 0 : 100;
@@ -323,10 +397,6 @@ invertBtn.addEventListener("click", () => {
     drawImage();
 });
 
-// ===============================
-// Rotation
-// ===============================
-
 rotateLeftBtn.addEventListener("click", () => {
     saveHistory();
     imageSettings.rotation -= 90;
@@ -341,10 +411,6 @@ rotateRightBtn.addEventListener("click", () => {
     drawImage();
 });
 
-// ===============================
-// Flip
-// ===============================
-
 flipHorizontalBtn.addEventListener("click", () => {
     saveHistory();
     imageSettings.flipX *= -1;
@@ -356,10 +422,6 @@ flipVerticalBtn.addEventListener("click", () => {
     imageSettings.flipY *= -1;
     drawImage();
 });
-
-// ===============================
-// Mouse Wheel Zoom
-// ===============================
 
 canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
@@ -374,39 +436,40 @@ canvas.addEventListener("wheel", (e) => {
     drawImage();
 }, { passive: false });
 
-// ===============================
-// Drag and Crop Handling
-// ===============================
-
-let isDragging = false;
-let startX = 0;
-let startY = 0;
-
-canvas.addEventListener("mousedown", (e) => {
+canvas.addEventListener("pointerdown", (e) => {
     if (!image.src) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    e.preventDefault();
+    activePointerId = e.pointerId;
+    canvas.setPointerCapture(activePointerId);
+
+    const { x, y } = getCanvasPoint(e);
 
     if (cropMode) {
-        const currentCrop = getCropRect();
+        const handle = getCropHandle(x, y);
 
-        if (cropActive && currentCrop.w > 0 && currentCrop.h > 0 && pointInRect(x, y, currentCrop)) {
+        if (handle) {
+            cropDragMode = handle;
             isCropping = true;
-            cropStartX = x;
-            cropStartY = y;
-            cropEndX = x;
-            cropEndY = y;
-        } else {
-            cropActive = true;
-            isCropping = true;
-            cropStartX = x;
-            cropStartY = y;
-            cropEndX = x;
-            cropEndY = y;
+            canvas.style.cursor = "crosshair";
+            return;
         }
 
+        if (cropBox && pointInRect(x, y, cropBox)) {
+            isMovingCrop = true;
+            cropOffsetX = x - cropBox.x;
+            cropOffsetY = y - cropBox.y;
+            canvas.style.cursor = "move";
+            return;
+        }
+
+        cropStartX = x;
+        cropStartY = y;
+        cropEndX = x;
+        cropEndY = y;
+        cropBox = { x, y, w: 0, h: 0 };
+        isCropping = true;
+        cropDragMode = "create";
         canvas.style.cursor = "crosshair";
         return;
     }
@@ -416,15 +479,52 @@ canvas.addEventListener("mousedown", (e) => {
     startY = e.clientY;
 });
 
-canvas.addEventListener("mousemove", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+canvas.addEventListener("pointermove", (e) => {
+    if (activePointerId !== e.pointerId) return;
 
-    if (cropMode && isCropping) {
-        cropEndX = x;
-        cropEndY = y;
-        drawImage();
+    const { x, y } = getCanvasPoint(e);
+
+    if (cropMode) {
+        if (isCropping && cropDragMode === "create") {
+            cropEndX = x;
+            cropEndY = y;
+            cropBox = normalizeRect(cropStartX, cropStartY, cropEndX, cropEndY);
+            drawImage();
+            return;
+        }
+
+        if (isCropping && cropDragMode && cropDragMode !== "create") {
+            let left = cropBox.x;
+            let top = cropBox.y;
+            let right = cropBox.x + cropBox.w;
+            let bottom = cropBox.y + cropBox.h;
+
+            if (cropDragMode.includes("n")) top = y;
+            if (cropDragMode.includes("s")) bottom = y;
+            if (cropDragMode.includes("w")) left = x;
+            if (cropDragMode.includes("e")) right = x;
+
+            const rect = normalizeRect(left, top, right, bottom);
+            cropBox = {
+                x: clamp(rect.x, 0, canvas.width),
+                y: clamp(rect.y, 0, canvas.height),
+                w: clamp(rect.w, 0, canvas.width),
+                h: clamp(rect.h, 0, canvas.height)
+            };
+
+            drawImage();
+            return;
+        }
+
+        if (isMovingCrop && cropBox) {
+            const newX = clamp(x - cropOffsetX, 0, canvas.width - cropBox.w);
+            const newY = clamp(y - cropOffsetY, 0, canvas.height - cropBox.h);
+            cropBox.x = newX;
+            cropBox.y = newY;
+            drawImage();
+            return;
+        }
+
         return;
     }
 
@@ -442,43 +542,60 @@ canvas.addEventListener("mousemove", (e) => {
     drawImage();
 });
 
-canvas.addEventListener("mouseup", () => {
+canvas.addEventListener("pointerup", (e) => {
+    if (activePointerId !== e.pointerId) return;
+
     isDragging = false;
     isCropping = false;
+    isMovingCrop = false;
+    cropDragMode = null;
+    activePointerId = null;
+
+    try {
+        canvas.releasePointerCapture(e.pointerId);
+    } catch {}
 });
 
-canvas.addEventListener("mouseleave", () => {
+canvas.addEventListener("pointercancel", () => {
     isDragging = false;
     isCropping = false;
+    isMovingCrop = false;
+    cropDragMode = null;
+    activePointerId = null;
 });
-
-// ===============================
-// Crop Mode
-// ===============================
 
 cropBtn.addEventListener("click", () => {
     cropMode = true;
-    cropActive = false;
+    cropBox = null;
+    cropStartX = 0;
+    cropStartY = 0;
+    cropEndX = 0;
+    cropEndY = 0;
     isCropping = false;
+    isMovingCrop = false;
+    cropDragMode = null;
     applyCropBtn.style.display = "block";
     canvas.style.cursor = "crosshair";
 });
 
 applyCropBtn.addEventListener("click", () => {
-    if (!image.src) return;
-
-    const { x, y, w, h } = getCropRect();
-    if (w < 10 || h < 10) return;
+    if (!image.src || !cropBox || cropBox.w < 5 || cropBox.h < 5) return;
 
     saveHistory();
 
+    const cropX = Math.max(0, Math.floor(cropBox.x));
+    const cropY = Math.max(0, Math.floor(cropBox.y));
+    const cropW = Math.max(1, Math.floor(cropBox.w));
+    const cropH = Math.max(1, Math.floor(cropBox.h));
+
+    const sourceCanvas = renderToSourceCanvas();
     const tempCanvas = document.createElement("canvas");
     const tempCtx = tempCanvas.getContext("2d");
 
-    tempCanvas.width = w;
-    tempCanvas.height = h;
+    tempCanvas.width = cropW;
+    tempCanvas.height = cropH;
 
-    tempCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    tempCtx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
     image = new Image();
     image.onload = function () {
@@ -489,10 +606,6 @@ applyCropBtn.addEventListener("click", () => {
     };
     image.src = tempCanvas.toDataURL("image/png");
 });
-
-// ===============================
-// Undo / Redo
-// ===============================
 
 undoBtn.addEventListener("click", () => {
     if (history.length === 0) return;
@@ -509,10 +622,6 @@ redoBtn.addEventListener("click", () => {
     const next = redoHistory.pop();
     restoreImage(next);
 });
-
-// ===============================
-// Reset
-// ===============================
 
 resetBtn.addEventListener("click", () => {
     saveHistory();
@@ -549,10 +658,6 @@ resetBtn.addEventListener("click", () => {
     drawImage();
 });
 
-// ===============================
-// Download
-// ===============================
-
 downloadBtn.addEventListener("click", () => {
     if (!image.src) return;
 
@@ -561,10 +666,6 @@ downloadBtn.addEventListener("click", () => {
     link.href = canvas.toDataURL("image/png");
     link.click();
 });
-
-// ===============================
-// Zoom Buttons
-// ===============================
 
 zoomInBtn.addEventListener("click", () => {
     saveHistory();
