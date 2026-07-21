@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Editor Pro</title>
+
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-image"></i>
+                </div>
+                <div>
+                    <h1>Image Editor </h1>
+                    <p>Drag, drop, crop, adjust, and export your images</p>
+                </div>
+            </div>
+
+            <div class="topbar-actions">
+                <label class="btn btn-primary upload-btn">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>Upload</span>
+                    <input type="file" id="fileInput" accept="image/*" />
+                </label>
+
+                <button id="download" class="btn btn-outline">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Download</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <aside class="sidebar">
+                <section class="panel">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-palette"></i>
+                        <h2>Filters</h2>
+                    </div>
+
+                    <div class="button-grid">
+                        <button id="grayscale" class="tool-btn">
+                            <i class="fa-solid fa-circle-half-stroke"></i>
+                            <span>Gray</span>
+                        </button>
+
+                        <button id="sepia" class="tool-btn">
+                            <i class="fa-solid fa-droplet"></i>
+                            <span>Sepia</span>
+                        </button>
+
+                        <button id="invert" class="tool-btn">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                            <span>Invert</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-sliders"></i>
+                        <h2>Adjustments</h2>
+                    </div>
+
+                    <div class="slider-box">
+                        <div class="slider-title">
+                            <span>Brightness</span>
+                            <span id="brightnessValue">100%</span>
+                        </div>
+                        <input type="range" id="brightness" min="0" max="200" value="100">
+                    </div>
+
+                    <div class="slider-box">
+                        <div class="slider-title">
+                            <span>Contrast</span>
+                            <span id="contrastValue">100%</span>
+                        </div>
+                        <input type="range" id="contrast" min="0" max="200" value="100">
+                    </div>
+
+                    <div class="slider-box">
+                        <div class="slider-title">
+                            <span>Saturation</span>
+                            <span id="saturationValue">100%</span>
+                        </div>
+                        <input type="range" id="saturation" min="0" max="200" value="100">
+                    </div>
+
+                    <div class="slider-box">
+                        <div class="slider-title">
+                            <span>Blur</span>
+                            <span id="blurValue">0px</span>
+                        </div>
+                        <input type="range" id="blur" min="0" max="10" value="0">
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-up-down-left-right"></i>
+                        <h2>Transform</h2>
+                    </div>
+
+                    <div class="button-grid">
+                        <button id="rotateLeft" class="tool-btn">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Left</span>
+                        </button>
+
+                        <button id="rotateRight" class="tool-btn">
+                            <i class="fa-solid fa-rotate-right"></i>
+                            <span>Right</span>
+                        </button>
+
+                        <button id="flipHorizontal" class="tool-btn">
+                            <i class="fa-solid fa-left-right"></i>
+                            <span>Flip H</span>
+                        </button>
+
+                        <button id="flipVertical" class="tool-btn">
+                            <i class="fa-solid fa-up-down"></i>
+                            <span>Flip V</span>
+                        </button>
+
+                        <button id="zoomIn" class="tool-btn">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i>
+                            <span>Zoom In</span>
+                        </button>
+
+                        <button id="zoomOut" class="tool-btn">
+                            <i class="fa-solid fa-magnifying-glass-minus"></i>
+                            <span>Zoom Out</span>
+                        </button>
+
+                        <button id="fitImage" class="tool-btn">
+                            <i class="fa-solid fa-expand"></i>
+                            <span>Fit</span>
+                        </button>
+
+                        <button id="cropBtn" class="tool-btn">
+                            <i class="fa-solid fa-crop"></i>
+                            <span>Crop</span>
+                        </button>
+
+                        <button id="applyCropBtn" class="tool-btn tool-btn-success" style="display:none;">
+                            <i class="fa-solid fa-check"></i>
+                            <span>Apply</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <button id="reset" class="btn btn-danger full-width">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        Reset Editor
+                    </button>
+
+                    <div class="undo-redo">
+                        <button id="undoBtn" class="btn btn-secondary">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            Undo
+                        </button>
+
+                        <button id="redoBtn" class="btn btn-secondary">
+                            <i class="fa-solid fa-rotate-right"></i>
+                            Redo
+                        </button>
+                    </div>
+                </section>
+            </aside>
+
+            <main class="canvas-shell">
+                <div class="canvas-toolbar">
+                    <div class="status-pill">
+                        <span class="dot"></span>
+                        <span id="statusText">Ready</span>
+                    </div>
+
+                    <div class="status-pill">
+                        Zoom: <span id="zoomStatus">100%</span>
+                    </div>
+
+                    <div class="status-pill">
+                        Drag & Drop Supported
+                    </div>
+                </div>
+
+                <div class="canvas-stage" id="dropArea">
+                    <div id="dropMessage" class="drop-message">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <h3>Drag & Drop Image Here</h3>
+                        <p>or click Upload to choose a file</p>
+                    </div>
+
+                    <canvas id="canvas"></canvas>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
